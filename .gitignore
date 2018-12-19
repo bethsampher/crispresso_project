@@ -1,3 +1,4 @@
 *.out
 *.err
 S*exp*/
+*.swp

@@ -7,6 +7,8 @@ import subprocess
 import os.path
 import sys
 import time
+import threading
+import Queue
 
 fileregex = re.compile(r'^(\d+)_S\1_L001_R([1])_001\.fastq\.gz$')
 if len(sys.argv) < 2:
@@ -19,16 +21,20 @@ class Crispresso():
     def __init__(self, experiment, barcode, parameters):
         self.output = open(experiment + '_' + str(barcode) + '.out', 'w')
         self.error = open(experiment + '_' + str(barcode) + '.err', 'w')
-        self.process = (subprocess.Popen(parameters, stderr=self.error, stdout=self.output))
+        self.parameters = parameters
+        self.name = str(barcode) + 'exp' + experiment
     def wait_close(self):
         self.process.wait()
         self.output.close()
         self.error.close()
+    def run(self):
+        self.process = (subprocess.Popen(self.parameters, stderr=self.error, stdout=self.output))
+
 
 def run_crispresso():
     counter = 0
     processes = []
-    with open(os.path.join(folder, csv_name)) as spreadsheet:
+    with open(csv_name) as spreadsheet:
         spreadsheet_reader = csv.DictReader(spreadsheet)
         readlist = []
         for read in spreadsheet_reader:
@@ -57,10 +63,26 @@ def run_crispresso():
                     return processes
                        
 
+def run_queue(number):
+    while not q.empty():
+        instance = q.get()
+        print('worker %d has started job %s' % (number, instance.name))
+        instance.run()
+        instance.wait_close()
+        print('worker %d has finished job %s' % (number, instance.name))
+
 
 start_time = time.time()
 processes = run_crispresso()
+q = Queue.Queue()
+threadlist = []
 for process in processes:
-    process.wait_close()
+    q.put(process)
+for num in range(0, 3):
+    t = threading.Thread(target=run_queue, args=(num,))
+    threadlist.append(t)
+    t.start()
+for thread in threadlist:
+    thread.join()
 end_time = time.time()
 print(str(end_time - start_time))
